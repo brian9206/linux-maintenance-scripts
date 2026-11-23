@@ -151,6 +151,8 @@ EOF
 sudo systemctl daemon-reload
 sudo systemctl enable notify-reboot.service
 
+sudo rm -f /var/lib/unattended-upgrades/last-ntfy-boot.stamp
+
 sudo systemctl start notify-reboot.service
 sudo journalctl -u notify-reboot.service -n 10 --no-pager
 
