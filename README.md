@@ -1,11 +1,13 @@
-# Useful scripts
+# My Linux Maintenance Scripts
 
-Scripts for automating security patching and server reboot notifications on **Debian** and **Ubuntu** hosts with [ntfy](https://ntfy.sh) alerts.
+Scripts for automating security patching and server reboot notifications on **Debian** and **Ubuntu** hosts with [ntfy](https://ntfy.sh) alerts (Chinese notification).
 
 ## Supported OS
 
 - **Debian** and **Ubuntu** only (verified via `/etc/os-release` `ID`).
 - Scripts are safe to re-run to update configuration parameters.
+
+> **Uninstall note:** Uninstalling deletes the files managed by each script. Because the installers do not create backups, uninstalling cannot restore configuration that existed before installation.
 
 ---
 
@@ -22,13 +24,16 @@ chmod +x install-auto-security-patch.sh
 
 ### Options
 
-| Flag | Required | Default | Description |
-| :--- | :---: | :--- | :--- |
-| `--ntfy_url='URL'` | Yes | — | Target `ntfy` endpoint URL (must start with `http://` or `https://`). Environment variables are ignored. |
-| `--auto-reboot` | No | Disabled (`"false"`) | Automatically reboot when required by security updates (e.g., kernel updates). |
-| `--auto-reboot-time='HH:MM'` | No | `"03:30"` | Scheduled reboot time in 24-hour `HH:MM` format. |
-| `--tz='TIMEZONE'` | No | Unchanged | Set system timezone via `timedatectl` (e.g., `Asia/Hong_Kong`). |
-| `-h`, `--help` | No | — | Display usage information and exit. |
+| Flag                         | Required | Default              | Description                                                                                              |
+| :--------------------------- | :------: | :------------------- | :------------------------------------------------------------------------------------------------------- |
+| `--ntfy_url='URL'`           |   Yes    | —                    | Target `ntfy` endpoint URL (must start with `http://` or `https://`). Environment variables are ignored. |
+| `--auto-reboot`              |    No    | Disabled (`"false"`) | Automatically reboot when required by security updates (e.g., kernel updates).                           |
+| `--auto-reboot-time='HH:MM'` |    No    | `"03:30"`            | Scheduled reboot time in 24-hour `HH:MM` format.                                                         |
+| `--tz='TIMEZONE'`            |    No    | Unchanged            | Set system timezone via `timedatectl` (e.g., `Asia/Hong_Kong`).                                          |
+| `--uninstall`                |    No    | —                    | Remove managed configuration, notification files, and state. Must be used alone.                         |
+| `-h`, `--help`               |    No    | —                    | Display usage information and exit.                                                                      |
+
+`--ntfy_url` is required for installation only. `--uninstall` must be used without any other arguments.
 
 ### Examples
 
@@ -43,6 +48,14 @@ chmod +x install-auto-security-patch.sh
   --auto-reboot-time='03:30' \
   --tz='Asia/Hong_Kong'
 ```
+
+### Uninstall
+
+```bash
+./install-auto-security-patch.sh --uninstall
+```
+
+This disables and stops `apt-daily.timer` and `apt-daily-upgrade.timer`, removes `/usr/local/bin/notify-unattended-upgrades.sh` and both managed APT configuration files, and deletes `last-ntfy-date.stamp`, `last-ntfy-run.stamp`, and `last-ntfy-dpkg.stamp` from `/var/lib/unattended-upgrades/`. The `unattended-upgrades`, `apt-listchanges`, and `needrestart` packages remain installed, and the system timezone is left unchanged.
 
 ### Generated / Managed Files
 
@@ -67,16 +80,27 @@ chmod +x install-reboot-notification.sh
 
 ### Options
 
-| Flag | Required | Default | Description |
-| :--- | :---: | :--- | :--- |
-| `--ntfy_url='URL'` | Yes | — | Target `ntfy` endpoint URL (must start with `http://` or `https://`). Environment variables are ignored. |
-| `-h`, `--help` | No | — | Display usage information and exit. |
+| Flag               | Required | Default | Description                                                                                              |
+| :----------------- | :------: | :------ | :------------------------------------------------------------------------------------------------------- |
+| `--ntfy_url='URL'` |   Yes    | —       | Target `ntfy` endpoint URL (must start with `http://` or `https://`). Environment variables are ignored. |
+| `--uninstall`      |    No    | —       | Remove the notification service, helper script, and state file. Must be used alone.                      |
+| `-h`, `--help`     |    No    | —       | Display usage information and exit.                                                                      |
+
+`--ntfy_url` is required for installation only. `--uninstall` must be used without any other arguments.
 
 ### Example
 
 ```bash
 ./install-reboot-notification.sh --ntfy_url='https://ntfy.sh/my_server_noti'
 ```
+
+### Uninstall
+
+```bash
+./install-reboot-notification.sh --uninstall
+```
+
+This disables and stops `notify-reboot.service`, reloads systemd, and removes the service unit, `/usr/local/bin/notify-reboot.sh`, and `/var/lib/unattended-upgrades/last-ntfy-boot.stamp`. The `curl` package remains installed.
 
 ### Generated / Managed Files
 

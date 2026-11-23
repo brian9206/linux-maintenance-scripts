@@ -6,8 +6,9 @@ set -euo pipefail
 #
 # Usage:
 #   ./install-auto-security-patch.sh --ntfy_url='https://...' [options]
+#   ./install-auto-security-patch.sh --uninstall
 #
-# Required Arguments:
+# Required Arguments (installation only):
 #   --ntfy_url='URL'          Target ntfy endpoint URL (must start with http://
 #                             or https://). Environment variables are ignored.
 #
@@ -19,15 +20,19 @@ set -euo pipefail
 #                             (Default: "03:30")
 #   --tz='TIMEZONE'           Set system timezone via timedatectl, e.g.,
 #                             "Asia/Hong_Kong". (Default: unchanged)
+#   --uninstall               Remove managed configuration, notification script,
+#                             and state files. Must be used alone. Packages and
+#                             system timezone are left unchanged.
 #   -h, --help                Display this usage message and exit.
 #
 # Supported OS:
 #   Debian or Ubuntu only (checked via /etc/os-release ID).
 #
 # Examples:
-#   ./install.sh --ntfy_url='https://ntfy.sh/my_server_noti'
-#   ./install.sh --ntfy_url='https://ntfy.sh/my_server_noti' \
+#   ./install-auto-security-patch.sh --ntfy_url='https://ntfy.sh/my_server_noti'
+#   ./install-auto-security-patch.sh --ntfy_url='https://ntfy.sh/my_server_noti' \
 #     --auto-reboot --auto-reboot-time='03:30' --tz='Asia/Hong_Kong'
+#   ./install-auto-security-patch.sh --uninstall
 ################################################################################
 
 # Check if the host OS is Debian or Ubuntu before proceeding
@@ -49,16 +54,35 @@ case "$OS_ID" in
     ;;
 esac
 
+ARG_COUNT="$#"
 NTFY_URL=""
 AUTO_REBOOT="false"
 AUTO_REBOOT_TIME="03:30"
 TZ_NAME=""
+UNINSTALL="false"
 
 usage() {
   cat <<'EOF' >&2
 Usage: ./install-auto-security-patch.sh --ntfy_url='https://...' [--auto-reboot] [--auto-reboot-time='03:30'] [--tz='Asia/Hong_Kong']
+       ./install-auto-security-patch.sh --uninstall
 EOF
   exit 1
+}
+
+uninstall() {
+  echo "Removing automatic security patching and ntfy notifications..."
+  sudo systemctl disable --now apt-daily.timer apt-daily-upgrade.timer
+  sudo rm -f \
+    /etc/apt/apt.conf.d/20auto-upgrades \
+    /etc/apt/apt.conf.d/52unattended-upgrades-local \
+    /usr/local/bin/notify-unattended-upgrades.sh \
+    /var/lib/unattended-upgrades/last-ntfy-date.stamp \
+    /var/lib/unattended-upgrades/last-ntfy-run.stamp \
+    /var/lib/unattended-upgrades/last-ntfy-dpkg.stamp
+
+  echo "========================================================================"
+  echo "Uninstallation complete. APT packages and system timezone were left unchanged."
+  echo "========================================================================"
 }
 
 while [ "$#" -gt 0 ]; do
@@ -90,6 +114,9 @@ while [ "$#" -gt 0 ]; do
       TZ_NAME="$2"
       shift
       ;;
+    --uninstall)
+      UNINSTALL="true"
+      ;;
     -h|--help)
       usage
       ;;
@@ -101,7 +128,16 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 
-# Validate required --ntfy_url and ensure http:// or https:// prefix
+if [ "$UNINSTALL" = "true" ]; then
+  if [ "$ARG_COUNT" -ne 1 ]; then
+    echo "Error: --uninstall must be used without other arguments." >&2
+    usage
+  fi
+  uninstall
+  exit 0
+fi
+
+# Validate required --ntfy_url for installation and ensure http:// or https:// prefix
 [ -n "$NTFY_URL" ] || {
   echo "Error: --ntfy_url is required." >&2
   usage
@@ -126,7 +162,7 @@ if [ -n "$TZ_NAME" ]; then
   sudo timedatectl set-timezone "$TZ_NAME"
 fi
 
-sudo apt update && sudo apt install -y unattended-upgrades apt-listchanges needrestart
+sudo apt update && sudo apt install -y unattended-upgrades apt-listchanges needrestart curl
 
 cat <<'EOF' | sudo tee /etc/apt/apt.conf.d/20auto-upgrades >/dev/null
 APT::Periodic::Update-Package-Lists "1";
@@ -134,10 +170,6 @@ APT::Periodic::Unattended-Upgrade "1";
 APT::Periodic::AutocleanInterval "7";
 EOF
 
-sudo systemctl enable --now apt-daily.timer apt-daily-upgrade.timer
-
-
-##### NTFY SCRIPT #####
 sudo tee /usr/local/bin/notify-unattended-upgrades.sh >/dev/null <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
@@ -239,6 +271,9 @@ sudo rm -f /var/lib/unattended-upgrades/last-ntfy-date.stamp
 
 # Run dry-run after installation to verify configuration
 sudo unattended-upgrade -d --dry-run
+
+# Enable system timer
+sudo systemctl enable --now apt-daily.timer apt-daily-upgrade.timer
 
 ##### INSTALL COMPLETE #####
 echo "========================================================================"

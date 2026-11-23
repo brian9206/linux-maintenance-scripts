@@ -6,12 +6,16 @@ set -euo pipefail
 #
 # Usage:
 #   ./install-reboot-notification.sh --ntfy_url='https://...' [options]
+#   ./install-reboot-notification.sh --uninstall
 #
-# Required Arguments:
+# Required Arguments (installation only):
 #   --ntfy_url='URL'          Target ntfy endpoint URL (must start with http://
 #                             or https://). Environment variables are ignored.
 #
 # Optional Arguments:
+#   --uninstall               Remove the notification service, helper script,
+#                             and state file. Must be used alone. curl is left
+#                             installed.
 #   -h, --help                Display this usage message and exit.
 #
 # Supported OS:
@@ -19,6 +23,7 @@ set -euo pipefail
 #
 # Examples:
 #   ./install-reboot-notification.sh --ntfy_url='https://ntfy.sh/my_server_noti'
+#   ./install-reboot-notification.sh --uninstall
 ################################################################################
 
 # Check if the host OS is Debian or Ubuntu before proceeding
@@ -40,13 +45,36 @@ case "$OS_ID" in
     ;;
 esac
 
+ARG_COUNT="$#"
 NTFY_URL=""
+UNINSTALL="false"
 
 usage() {
   cat <<'EOF' >&2
 Usage: ./install-reboot-notification.sh --ntfy_url='https://...'
+       ./install-reboot-notification.sh --uninstall
 EOF
   exit 1
+}
+
+uninstall() {
+  echo "Removing reboot notification service..."
+  if [ -f /etc/systemd/system/notify-reboot.service ]; then
+    sudo systemctl disable --now notify-reboot.service
+  fi
+
+  sudo rm -f \
+    /etc/systemd/system/notify-reboot.service \
+    /usr/local/bin/notify-reboot.sh \
+    /var/lib/unattended-upgrades/last-ntfy-boot.stamp
+
+  sudo systemctl daemon-reload
+  # The unit may already be absent when uninstall is repeated.
+  sudo systemctl reset-failed notify-reboot.service 2>/dev/null || true
+
+  echo "========================================================================"
+  echo "Uninstallation complete. curl was left installed."
+  echo "========================================================================"
 }
 
 while [ "$#" -gt 0 ]; do
@@ -59,6 +87,9 @@ while [ "$#" -gt 0 ]; do
       NTFY_URL="$2"
       shift
       ;;
+    --uninstall)
+      UNINSTALL="true"
+      ;;
     -h|--help)
       usage
       ;;
@@ -70,7 +101,16 @@ while [ "$#" -gt 0 ]; do
   shift
 done
 
-# Validate required --ntfy_url and ensure http:// or https:// prefix
+if [ "$UNINSTALL" = "true" ]; then
+  if [ "$ARG_COUNT" -ne 1 ]; then
+    echo "Error: --uninstall must be used without other arguments." >&2
+    usage
+  fi
+  uninstall
+  exit 0
+fi
+
+# Validate required --ntfy_url for installation and ensure http:// or https:// prefix
 [ -n "$NTFY_URL" ] || {
   echo "Error: --ntfy_url is required." >&2
   usage
