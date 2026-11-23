@@ -5,7 +5,7 @@ Scripts for automating security patching and server reboot notifications on **De
 ## Supported OS
 
 - **Debian** and **Ubuntu** only (verified via `/etc/os-release` `ID`).
-- Scripts are safe to re-run to update configuration parameters.
+- Scripts can be re-run to apply configuration parameters. Existing ntfy token assignments are preserved, but omitted installation options use their documented defaults.
 
 > **Uninstall note:** Uninstalling deletes the files managed by each script. Because the installers do not create backups, uninstalling cannot restore configuration that existed before installation.
 
@@ -55,15 +55,18 @@ chmod +x install-auto-security-patch.sh
 ./install-auto-security-patch.sh --uninstall
 ```
 
-This disables and stops `apt-daily.timer` and `apt-daily-upgrade.timer`, removes `/usr/local/bin/notify-unattended-upgrades.sh` and both managed APT configuration files, and deletes `last-ntfy-date.stamp`, `last-ntfy-run.stamp`, and `last-ntfy-dpkg.stamp` from `/var/lib/unattended-upgrades/`. The `unattended-upgrades`, `apt-listchanges`, and `needrestart` packages remain installed, and the system timezone is left unchanged.
+This disables and stops `apt-daily.timer` and `apt-daily-upgrade.timer`, removes `/usr/local/bin/notify-unattended-upgrades.sh`, `/etc/ntfy-unattended-upgrades.conf`, and both managed APT configuration files, and deletes `last-ntfy-date.stamp`, `last-ntfy-run.stamp`, and `last-ntfy-dpkg.stamp` from `/var/lib/unattended-upgrades/`. The `unattended-upgrades`, `apt-listchanges`, and `needrestart` packages remain installed, and the system timezone is left unchanged.
 
 ### Generated / Managed Files
 
-- `/usr/local/bin/notify-unattended-upgrades.sh` — Parses today's unattended upgrade and `dpkg` logs, deduplicates per day via `/var/lib/unattended-upgrades/last-ntfy-date.stamp`, and posts a summary to `ntfy`.
+- `/usr/local/bin/notify-unattended-upgrades.sh` — Parses today's unattended upgrade and `dpkg` logs, deduplicates per day via `/var/lib/unattended-upgrades/last-ntfy-date.stamp`, and posts a summary to `ntfy` with bounded timeouts and up to three attempts.
+- `/etc/ntfy-unattended-upgrades.conf` — Root-only (`0600`) ntfy configuration containing `NTFY_URL` and optional `NTFY_TOKEN`.
 - `/etc/apt/apt.conf.d/20auto-upgrades` — Sets periodic update, unattended upgrade, and `AutocleanInterval` (`"7"`).
 - `/etc/apt/apt.conf.d/52unattended-upgrades-local` — Configures `Remove-Unused-Dependencies`, `Automatic-Reboot`, `Automatic-Reboot-Time`, `DPkg::Post-Invoke`, and allowed security origins.
 
-> **Note:** Re-running the script overwrites `/usr/local/bin/notify-unattended-upgrades.sh` and resets any manual `NTFY_TOKEN` edit inside it back to `""`.
+> **Ntfy authentication:** Run `sudoedit /etc/ntfy-unattended-upgrades.conf` and set `NTFY_TOKEN='tk_xxxxxxxx'` if authentication is required. Re-running the installer preserves the `NTFY_TOKEN` assignment while replacing `NTFY_URL`.
+>
+> **Re-run note:** Omitted options revert to their defaults. For example, re-running with only `--ntfy_url` disables automatic reboot and resets `--auto-reboot-time` to `"03:30"`. The timezone is left unchanged unless `--tz` is supplied. The per-day notification stamp is preserved to avoid duplicate alerts.
 
 ---
 
@@ -83,7 +86,7 @@ chmod +x install-reboot-notification.sh
 | Flag               | Required | Default | Description                                                                                              |
 | :----------------- | :------: | :------ | :------------------------------------------------------------------------------------------------------- |
 | `--ntfy_url='URL'` |   Yes    | —       | Target `ntfy` endpoint URL (must start with `http://` or `https://`). Environment variables are ignored. |
-| `--uninstall`      |    No    | —       | Remove the notification service, helper script, and state file. Must be used alone.                      |
+| `--uninstall`      |    No    | —       | Remove the notification service, ntfy configuration, helper script, and state file. Must be used alone.          |
 | `-h`, `--help`     |    No    | —       | Display usage information and exit.                                                                      |
 
 `--ntfy_url` is required for installation only. `--uninstall` must be used without any other arguments.
@@ -100,11 +103,14 @@ chmod +x install-reboot-notification.sh
 ./install-reboot-notification.sh --uninstall
 ```
 
-This disables and stops `notify-reboot.service`, reloads systemd, and removes the service unit, `/usr/local/bin/notify-reboot.sh`, and `/var/lib/unattended-upgrades/last-ntfy-boot.stamp`. The `curl` package remains installed.
+This disables and stops `notify-reboot.service`, reloads systemd, and removes the service unit, `/usr/local/bin/notify-reboot.sh`, `/etc/ntfy-reboot.conf`, and `/var/lib/unattended-upgrades/last-ntfy-boot.stamp`. The `curl` package remains installed.
 
 ### Generated / Managed Files
 
-- `/usr/local/bin/notify-reboot.sh` — Sends reboot details to `ntfy` and tracks `/var/lib/unattended-upgrades/last-ntfy-boot.stamp` per `boot_id` to avoid duplicate alerts on the same boot.
+- `/usr/local/bin/notify-reboot.sh` — Sends reboot details to `ntfy` with bounded timeouts and up to three attempts, and tracks `/var/lib/unattended-upgrades/last-ntfy-boot.stamp` per `boot_id` to avoid duplicate alerts on the same boot.
+- `/etc/ntfy-reboot.conf` — Root-only (`0600`) ntfy configuration containing `NTFY_URL` and optional `NTFY_TOKEN`.
 - `/etc/systemd/system/notify-reboot.service` — `systemd` unit triggered on boot after `network-online.target`.
 
+> **Ntfy authentication:** Run `sudoedit /etc/ntfy-reboot.conf` and set `NTFY_TOKEN='tk_xxxxxxxx'` if authentication is required. Re-running the installer preserves the `NTFY_TOKEN` assignment while replacing `NTFY_URL`.
+>
 > **Tip:** To trigger another test notification during re-runs on the same boot, remove `/var/lib/unattended-upgrades/last-ntfy-boot.stamp` before starting `notify-reboot.service`.
